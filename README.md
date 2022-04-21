@@ -43,10 +43,10 @@ In the later parts of the course, we will also look at scientific papers in the 
 | 7           | 13           | Time series: features (FPP3 4)                                            |
 | 8           | 14           | Time series: forecaster’s toolbox (FPP3 5)                                |
 | 9           | 16           | Time series: regression models (FPP3 7)                                   |
-| 10          | 17           | Time series: ETS, ARIMA (FPP3 8,9)                                        |
-| 11          | 18           | Time series: dynamic regression models, advanced methods (FPP3 10,11,12)  |
-| 12          | 19           | Time series: Bayesian structural models                                   |
-| 13          | 20           | Belief updating: cognitive processing of sequential inputs and HGFs       |
+| 10          | 17           | Time series: exponential smoothing (FPP3 8)                               |
+| 11          | 18           | Time series: ARIMA (FPP3 9)                                               |
+| 12          | 19           | Belief updating: cognitive processing of sequential inputs                |
+| 13          | 20           | Belief updating: hierarchical Gaussian filters                            |
 
 
 ### Exam
