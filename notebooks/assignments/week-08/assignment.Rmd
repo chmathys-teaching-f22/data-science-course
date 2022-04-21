@@ -1,0 +1,1175 @@
+---
+title: "Exercises: Sections 3.8 and 5.10"
+author: "Rob J Hyndman and George Athanasopoulos"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache = TRUE, warning = FALSE)
+library(fpp3)
+# Install seasonal package if you have not already done so
+# install.packages("seasonal")
+```
+
+# fpp3 3.7, Ex 1
+
+> Consider the GDP information in `global_economy`. Plot the GDP per capita for each country over time. Which country has the highest GDP per capita? How has this changed over time?
+
+```{r gdp_per_capita}
+global_economy %>%
+  autoplot(GDP / Population, alpha = 0.3) +
+  guides(colour = FALSE)
+
+avg_gdp_pc <- global_economy %>%
+  as_tibble() %>%
+  group_by(Country) %>%
+  summarise(
+    # Average GDP per capita for each country
+    gdp_pc = mean(GDP / Population, na.rm = TRUE),
+    # Most recent GDP per capita for each country
+    last = last((GDP / Population)[!is.na(GDP / Population)])
+  )
+top_n(avg_gdp_pc, 5, gdp_pc)
+
+max_gdp_pc <- global_economy %>%
+  semi_join(
+    avg_gdp_pc %>%
+      filter(gdp_pc == max(gdp_pc, na.rm = TRUE)),
+    by = "Country"
+  )
+
+# install.packages("ggrepel")
+# Using geom_label_repel() gives nicer label positions than geom_label()
+# If the ggrepel package is not available, you can use geom_label() instead
+library(ggrepel)
+global_economy %>%
+  ggplot(aes(x = Year, y = GDP / Population, group = Country)) +
+  geom_line(alpha = 0.3) +
+  geom_line(colour = "red", data = max_gdp_pc) +
+  geom_label_repel(
+    aes(label = Country, x = 2020, y = last),
+    data = top_n(avg_gdp_pc, 5, last),
+  )
+```
+
+```{r}
+global_economy %>%
+  mutate(gdp_pc = GDP / Population) %>%
+  as_tibble() %>%
+  group_by(Year) %>%
+  mutate(max_gdp_pc = max(gdp_pc, na.rm = TRUE)) %>%
+  ungroup() %>%
+  filter(
+    gdp_pc == max_gdp_pc,
+    Year >= 1970
+  ) %>%
+  arrange(Year)
+```
+
+Monaco currently has the highest GDP per capita, taking over from Liechtenstein. These two countries have had the highest GDP per capita for most of the last 50 years. The only years since 1970 where either Monaco or Liechtenstein did not have the highest GDP per capita were 1976 and 1977, when the United Arab Emirates just beat Monaco.
+
+# fpp3 3.7, Ex 2
+
+> For each of the following series, make a graph of the data. If transforming seems appropriate, do so and describe the effect.
+
+> * United States GDP from `global_economy`
+> * Slaughter of Victorian "Bulls, bullocks and steers" in `aus_livestock`
+> * Victorian Electricity Demand from `vic_elec`.
+> * Gas production from `aus_production`
+
+## United States GDP
+
+```{r}
+us_economy <- global_economy %>%
+  filter(Country == "United States")
+us_economy %>%
+  autoplot(GDP)
+```
+
+Trend appears exponential, a transformation would be useful.
+
+```{r}
+us_economy %>%
+  autoplot(box_cox(GDP, 0))
+```
+
+A log transformation (Box-Cox with $\lambda = 0$) appears slightly too strong.
+
+```{r}
+us_economy %>%
+  autoplot(box_cox(GDP, 0.3))
+```
+
+Using $\lambda = 0.3$ looks pretty good, the trend is now almost linear.
+
+Let's see what guerrero's method suggests.
+
+```{r}
+us_economy %>%
+  features(GDP, features = guerrero)
+```
+
+Pretty close to $\lambda = 0.3$, let's see how it looks:
+
+```{r}
+us_economy %>%
+  autoplot(box_cox(GDP, 0.2819714))
+```
+
+More or less the same. Box-Cox transformations are usually insensitive to the choice of $\lambda$.
+
+## Slaughter of Victorian "Bulls, bullocks and steers"
+
+```{r}
+vic_bulls <- aus_livestock %>%
+  filter(State == "Victoria", Animal == "Bulls, bullocks and steers")
+vic_bulls %>%
+  autoplot(Count)
+```
+
+Variation in the series appears to vary slightly with the number of bulls slaughtered in Victoria. A transformation may be useful.
+
+```{r}
+vic_bulls %>%
+  autoplot(log(Count))
+```
+
+A log transformation (Box-Cox $\lambda = 0$) appears to normalise most of the variation. Let's check with guerrero's method.
+
+```{r}
+vic_bulls %>%
+  features(Count, features = guerrero)
+```
+
+Pretty close, guerrero suggests $\lambda = -0.045$. This is close enough to zero, so it is probably best to just use a log transformation (allowing better interpretations).
+
+## Victorian Electricity Demand
+
+```{r}
+vic_elec %>%
+  autoplot(Demand)
+```
+
+Seasonal patterns for time of day hidden due to density of ink. Day-of-week seasonality just visible. Time-of-year seasonality is clear with increasing variance in winter and high skewness in summer.
+
+```{r}
+vic_elec %>%
+  autoplot(box_cox(Demand, 0))
+```
+
+A log transformation makes the variance more even and reduces the skewness.
+
+Guerrero's method doesn't work here as there are several types of seasonality.
+
+## Australian Gas production
+
+```{r}
+aus_production %>%
+  autoplot(Gas)
+```
+
+Variation in seasonal pattern grows proportionally to the amount of gas produced in Australia. A transformation should work well here.
+
+```{r}
+aus_production %>%
+  autoplot(box_cox(Gas, 0))
+```
+
+A log transformation appears slightly too strong, where the variation in periods with smaller gas production is now larger than the variation during greater gas production.
+
+```{r}
+aus_production %>%
+  features(Gas, features = guerrero)
+```
+
+Guerrero's method agrees by selecting a slightly weaker transformation. Let's see how it looks.
+
+```{r}
+aus_production %>%
+  autoplot(box_cox(Gas, 0.1095))
+```
+
+Looking good! The variation is now constant across the series.
+
+# fpp3 3.7, Ex 3
+
+> Why is a Box-Cox transformation unhelpful for the `canadian_gas` data?
+
+```{r}
+canadian_gas %>%
+  autoplot(Volume) +
+  labs(
+    x = "Year", y = "Gas production (billion cubic meters)",
+    title = "Monthly Canadian gas production"
+  )
+```
+
+Here the variation in the series is not proportional to the amount of gas production in Canada. When small and large amounts of gas is being produced, we can observe small variation in the seasonal pattern. However, between 1975 and 1990 the gas production is moderate, and the variation is large. Power transformations (like the Box-Cox transformation) require the variability of the series to vary proportionately to the level of the series.
+
+# fpp3 3.7, Ex 4
+
+> What Box-Cox transformation would you select for your retail data (from Exercise 8 in Section 2.10)?
+
+```{r}
+set.seed(12345678)
+myseries <- aus_retail %>%
+  filter(
+    `Series ID` == sample(aus_retail$`Series ID`, 1),
+    Month < yearmonth("2018 Jan")
+  )
+myseries %>%
+  autoplot(Turnover) +
+  labs(
+    y = "Turnover (million $AUD)", x = "Time (Years)",
+    title = myseries$Industry[1],
+    subtitle = myseries$State[1]
+  )
+```
+
+The variation appears proportional to the level of the series, so a Box-Cox transformation may be useful.
+
+```{r}
+myseries %>%
+  autoplot(box_cox(Turnover, 0)) +
+  labs(
+    title = myseries$Industry[1],
+    subtitle = myseries$State[1]
+  )
+```
+
+A log transformation (Box-Cox $\lambda = 0$) appears about right here.
+
+Let's check what the Guerrero method would suggest.
+
+```{r}
+myseries %>%
+  features(Turnover, features = guerrero)
+```
+
+This is close to zero, so it supports our choice above.
+
+Note: your series may be different and require a different transformation than what I have used here.
+
+# fpp3 3.7, Ex 5
+
+> For the following series, find an appropriate Box-Cox transformation in order to stabilise the variance. Tobacco from `aus_production`, Economy class passengers between Melbourne and Sydney from `ansett`, and Pedestrian counts at Southern Cross Station from `pedestrian`.
+
+## Australian tobacco production
+
+```{r}
+aus_production %>%
+  autoplot(Tobacco)
+```
+
+This variation in this series appears to be mostly constant across different levels of the series. If any transformation is required, it would be a weak one. This can be seen if a strong transformation (such as log) is used.
+
+```{r}
+aus_production %>%
+  autoplot(log(Tobacco))
+```
+
+Guerrero's method suggests that $\lambda = 0.926$ is appropriate. This is a very weak transformation, as it is close to 1 (probably best to not bother transforming this series).
+
+```{r}
+aus_production %>%
+  features(Tobacco, features = guerrero)
+```
+
+```{r}
+aus_production %>%
+  autoplot(box_cox(Tobacco, 0.926))
+```
+
+This series appears very similar to the original. The transformation is having almost no effect.
+
+## Economy passengers between Melbourne and Sydney
+
+```{r}
+ansett %>%
+  filter(Airports == "MEL-SYD", Class == "Economy") %>%
+  autoplot(Passengers) +
+  labs(title = "Economy passengers", subtitle = "MEL-SYD")
+```
+
+The data does not appear to vary proportionally to the level of the series. There are many periods in this time series (such as the strike and change in seat classes) that may need further attention, but this is probably better resolved with modelling rather than transformations.
+
+## Pedestrian counts
+
+```{r}
+pedestrian %>%
+  filter(Sensor == "Southern Cross Station") %>%
+  autoplot(Count) +
+  labs(title = "Southern Cross Pedestrians")
+```
+
+There is a high skewness and some zeros (so we can't take logs). Let's try the `log(x+1)` transformation:
+
+```{r}
+pedestrian %>%
+  filter(Sensor == "Southern Cross Station") %>%
+  autoplot(log1p(Count)) +
+  labs(title = "Southern Cross Pedestrians")
+```
+
+That's roughly balanced the two tails.
+
+# fpp3 3.7, Ex 6
+
+> Show that a $3\times 5$ MA is equivalent to a 7-term weighted moving average with weights of 0.067, 0.133, 0.200, 0.200, 0.200, 0.133, and 0.067.
+
+5-term moving average:
+$$z_j = \frac{1}{5}(y_{j-2}+y_{j-1}+y_j+y_{j+1}+y_{j+2}).$$
+3-term moving average:
+$$u_t = \frac{1}{3}(z_{t-1}+z_t+z_{t+1}).$$
+Substituting expression for $z_j$ into the latter formula we get
+\begin{align*}
+  u_t &= \frac{1}{3}\left(\frac{1}{5}\left(y_{t-3}+y_{t-2}+y_{t-1}+y_{t}+y_{t+1}\right)+\frac{1}{5}\left(y_{t-2}+y_{t-1}+y_t+y_{t+1}+y_{t+2}\right)+\frac{1}{5}\left(y_{t-1}+y_{t}+y_{t+1}+y_{t+2}+y_{t+3}\right)\right).\\
+  &= \frac{1}{15}\left(y_{t-3}+2y_{t-2}+3y_{t-1}+3y_{t}+3y_{t+1}+2y_{t+2}+y_{t+3}\right),
+\end{align*}
+which is a 7-term weighted moving average with weights of 0.067, 0.133, 0.200, 0.200, 0.200, 0.133, and 0.067
+
+# fpp3 3.7, Ex 7
+
+> Consider the last five years of the Gas data from `aus_production`.
+
+>    ```r
+>    gas <- tail(aus_production, 5*4) %>% select(Gas)
+>    ```
+
+>    a. Plot the time series. Can you identify seasonal fluctuations and/or a trend-cycle?
+
+```{r}
+gas <- tail(aus_production, 5 * 4) %>% select(Gas)
+gas %>%
+  autoplot(Gas) + labs(y = "Petajoules")
+```
+
+There is some strong seasonality and a trend.
+
+>    b. Use `classical_decomposition` with `type=multiplicative` to calculate the trend-cycle and seasonal indices.
+>    c. Do the results support the graphical interpretation from part a?
+
+```{r}
+decomp <- gas %>%
+  model(decomp = classical_decomposition(Gas, type = "multiplicative")) %>%
+  components()
+decomp %>% autoplot()
+```
+
+The decomposition has captured the seasonality and a slight trend.
+
+>    d. Compute and plot the seasonally adjusted data.
+
+```{r}
+as_tsibble(decomp) %>%
+  autoplot(season_adjust) +
+  labs(title = "Seasonally adjusted data", y = "Petajoules")
+```
+
+>    e. Change one observation to be an outlier (e.g., add 300 to one observation), and recompute the seasonally adjusted data. What is the effect of the outlier?
+>    f. Does it make any difference if the outlier is near the end rather than in the middle of the time series?
+
+```{r}
+gas %>%
+  mutate(Gas = if_else(Quarter == yearquarter("2007Q4"), Gas + 300, Gas)) %>%
+  model(decomp = classical_decomposition(Gas, type = "multiplicative")) %>%
+  components() %>%
+  as_tsibble() %>%
+  autoplot(season_adjust) +
+  labs(title = "Seasonally adjusted data", y = "Petajoules")
+```
+
+The "seasonally adjusted" data now shows some seasonality because the outlier has affected the estimate of the seasonal component.
+
+```{r}
+gas %>%
+  mutate(Gas = if_else(Quarter == yearquarter("2010Q2"), Gas + 300, Gas)) %>%
+  model(decomp = classical_decomposition(Gas, type = "multiplicative")) %>%
+  components() %>%
+  as_tsibble() %>%
+  autoplot(season_adjust) +
+  labs(title = "Seasonally adjusted data", y = "Petajoules")
+```
+
+The seasonally adjusted data now show no seasonality because the outlier is in the part of the data where the trend can't be estimated.
+
+# fpp3 3.7, Ex 8
+
+> Recall your retail time series data (from Exercise 8 in Section 2.10). Decompose the series using X11. Does it reveal any outliers, or unusual features that you had not noticed previously?
+
+```{r}
+set.seed(12345678)
+myseries <- aus_retail %>%
+  filter(`Series ID` == sample(aus_retail$`Series ID`, 1))
+decomp <- myseries %>%
+  model(x11 = X_13ARIMA_SEATS(Turnover ~ x11())) %>%
+  components()
+decomp %>% autoplot()
+```
+
+Two outliers are now evident in the "irregular" component --- in December 1995 and July 2010.
+
+# fpp3 3.7, Ex 9
+
+> Figures 3.16 and 3.17 show the result of decomposing the number of persons in the civilian labour force in Australia each month from February 1978 to August 1995.
+
+>   a. Write about 3--5 sentences describing the results of the decomposition. Pay particular attention to the scales of the graphs in making your interpretation.
+
+* The Australian labour force has been decomposed into 3 components (trend, seasonality, and remainder) using an STL decomposition.
+* The trend element has been captured well by the decomposition, as it smoothly increases with a similar pattern to the data. The trend is of the same scale as the data (indicated by similarly sized grey bars), and contributes most to the decomposition (having the smallest scale bar).
+* The seasonal component changes slowly throughout the series, with the second seasonal peak diminishing as time goes on -- this component is the smallest contribution original data (having the largest scale bar).
+* The remainder is well-behaved until 1991/1992 when there is a sharp drop. There also appears to be a smaller drop in 1993/1994. There is sometimes some leakage of the trend into the remainder component when the trend window is too large. This appears to have happened here. It would be better if the recession of 1991-1992, and the smaller dip in 1993, were both included in the trend estimate rather than the remainder estimate. This would require a smaller trend window than what was used.
+* In the bottom graph, the seasonal component is shown using a sub-series plot. December is the highest employment month, followed by March and September. The seasonal component changes mostly in March (with a decrease in the most recent years). July and August are the months with the next largest changes. The least changing is June with the rest are somewhere between these. December and September show increases in the most recent years.
+
+>   b. Is the recession of 1991/1992 visible in the estimated components?
+
+Yes. The remainder shows a substantial drop during 1991 and 1992 coinciding with the recession.
+
+# fpp3 3.7, Ex 10
+
+> This exercise uses the `canadian_gas` data (monthly Canadian gas production in billions of cubic metres, January 1960 -- February 2005).
+>
+>   a. Plot the data using `autoplot()`, `gg_subseries()` and `gg_season()` to look at the effect of the changing seasonality over time. What do you think is causing it to change so much?
+
+```{r gas1}
+canadian_gas %>% autoplot(Volume)
+canadian_gas %>% gg_subseries(Volume)
+canadian_gas %>% gg_season(Volume)
+```
+
+The changes in seasonality are possibly due to changes in the regulation of gas prices --- thanks to Lewis Kirvan for pointing this out.
+
+>   b. Do an STL decomposition of the data. You will need to choose a seasonal window to allow for the changing shape of the seasonal component.
+
+```{r gas2}
+fit <- canadian_gas %>%
+  model(STL(Volume)) %>%
+  components()
+fit %>% autoplot()
+```
+
+>   c. How does the seasonal shape change over time? [Hint: Try plotting the seasonal component using `gg_season()`.]
+
+```{r gas3}
+fit %>% gg_season(season_year)
+```
+
+Here the changes are easier to see. Up to about 1990 there is strong seasonality with the greatest volume in the Canadian winter. The seasonality increases in size over time. After 1990 the seasonality changes shape and appears to be driven partly by the month length near the end of the series.
+
+>   d. Can you produce a plausible seasonally adjusted series?
+
+```{r gas4}
+canadian_gas %>%
+  autoplot(Volume) +
+  autolayer(fit, season_adjust, col = "blue")
+```
+
+>   e. Compare the results with those obtained using SEATS and X11. How are they different?
+
+```{r gas5}
+canadian_gas %>%
+  model(X_13ARIMA_SEATS(Volume ~ seats())) %>%
+  components() %>%
+  autoplot()
+canadian_gas %>%
+  model(X_13ARIMA_SEATS(Volume ~ x11())) %>%
+  components() %>%
+  autoplot()
+```
+
+Note that X11 and SEATS fit multiplicative decompositions by default, so it is hard to directly compare the results with STL.
+
+Both SEATS and X11 have estimated a more wiggly trend line than STL. In particular, the additional flexibility of the SEATS trend has meant the irregular component has less remaining autocorrelation.
+
+# fpp3 5.10, Ex 1
+
+> Produce forecasts for the following series using whichever of `NAIVE(y)`, `SNAIVE(y)` or `RW(y ~ drift())` is more appropriate in each case:
+>
+>   * Australian Population (`global_economy`)
+>   * Bricks (`aus_production`)
+>   * NSW Lambs (`aus_livestock`)
+>   * Household wealth (`hh_budget`)
+>   * Australian takeaway food turnover (`aus_retail`)
+
+### Australian population
+
+```{r}
+global_economy %>%
+  filter(Country == "Australia") %>%
+  autoplot(Population)
+```
+
+Data has trend and no seasonality. Random walk with drift model is appropriate.
+```{r}
+global_economy %>%
+  filter(Country == "Australia") %>%
+  model(RW(Population ~ drift())) %>%
+  forecast(h = "10 years") %>%
+  autoplot(global_economy)
+```
+
+### Australian clay brick production
+
+```{r}
+aus_production %>%
+  filter(!is.na(Bricks)) %>%
+  autoplot(Bricks) +
+  labs(title = "Clay brick production")
+```
+
+This data appears to have more seasonality than trend, so of the models available, seasonal naive is most appropriate.
+
+```{r}
+aus_production %>%
+  filter(!is.na(Bricks)) %>%
+  model(SNAIVE(Bricks)) %>%
+  forecast(h = "5 years") %>%
+  autoplot(aus_production)
+```
+
+### NSW Lambs
+
+```{r}
+nsw_lambs <- aus_livestock %>%
+  filter(State == "New South Wales", Animal == "Lambs")
+nsw_lambs %>%
+  autoplot(Count)
+```
+
+This data appears to have more seasonality than trend, so of the models available, seasonal naive is most appropriate.
+
+```{r}
+nsw_lambs %>%
+  model(SNAIVE(Count)) %>%
+  forecast(h = "5 years") %>%
+  autoplot(nsw_lambs)
+```
+
+### Household wealth
+
+```{r}
+hh_budget %>%
+  autoplot(Wealth)
+```
+
+Annual data with trend upwards, so we can use a random walk with drift.
+
+```{r}
+hh_budget %>%
+  model(RW(Wealth ~ drift())) %>%
+  forecast(h = "5 years") %>%
+  autoplot(hh_budget)
+```
+
+### Australian takeaway food turnover
+
+```{r}
+takeaway <- aus_retail %>%
+  filter(Industry == "Takeaway food services") %>%
+  summarise(Turnover = sum(Turnover))
+takeaway %>% autoplot(Turnover)
+```
+
+This data has strong seasonality and strong trend, so we will use a seasonal naive model with drift.
+
+```{r}
+takeaway %>%
+  model(SNAIVE(Turnover ~ drift())) %>%
+  forecast(h = "5 years") %>%
+  autoplot(takeaway)
+```
+
+This is actually not one of the four benchmark methods discussed in the book, but is sometimes a useful benchmark when there is strong seasonality and strong trend.
+
+The corresponding equation is
+$$
+  \hat{y}_{T+h|T} = y_{T+h-m(k+1)} + \frac{h}{T-m}\sum_{t=m+1}^T(y_t - y_{t-m}),
+$$
+where $m=12$ and $k$ is the integer part of $(h-1)/m$ (i.e., the number of complete years in the forecast period prior to time $T+h$).
+
+# fpp3 5.10, Ex 2
+
+> Use the Facebook stock price (data set `gafa_stock`) to do the following:
+
+>   a. Produce a time plot of the series.
+>   b. Produce forecasts using the drift method and plot them.
+>   c. Show that the forecasts are identical to extending the line drawn between the first and last observations.
+>   d. Try using some of the other benchmark functions to forecast the same data set. Which do you think is best? Why?
+
+### Time plot
+
+```{r}
+fb_stock <- gafa_stock %>%
+  filter(Symbol == "FB")
+fb_stock %>%
+  autoplot(Close)
+```
+An upward trend is evident until mid-2018, after which the closing stock price drops.
+
+### Drift method forecasts
+
+The data must be made regular before it can be modelled. We will use trading days as our regular index.
+
+```{r}
+fb_stock <- fb_stock %>%
+  mutate(trading_day = row_number()) %>%
+  update_tsibble(index = trading_day, regular = TRUE)
+```
+
+Time to model a random walk with drift.
+
+```{r}
+fb_stock %>%
+  model(RW(Close ~ drift())) %>%
+  forecast(h = 100) %>%
+  autoplot(fb_stock)
+```
+
+### Prove drift methods are extrapolations from the first and last observation
+
+First, we will demonstrate it graphically.
+
+```{r}
+fb_stock %>%
+  model(RW(Close ~ drift())) %>%
+  forecast(h = 100) %>%
+  autoplot(fb_stock) +
+  geom_line(
+    aes(y = Close),
+    linetype = "dashed", colour = "blue",
+    data = fb_stock %>% filter(trading_day %in% range(trading_day))
+  )
+```
+
+To prove it algebraically, note that
+\begin{align*}
+ \hat{y}_{T+h|T} = y_T + h\left(\frac{y_T-y_1}{T-1}\right)
+\end{align*}
+which is a straight line with slope $(y_T-y_1)/(T-1)$ that goes through the point $(T,y_T)$.
+
+Therefore, it must also go through the point $(1,c)$ where
+$$
+  (y_T-c)/(T-1) = (y_T - y_1) / (T-1),
+$$
+so $c=y_1$.
+
+### Use other appropriate benchmark methods
+
+The most appropriate benchmark method is the naive model. The mean forecast is terrible for this type of data, and the data is non-seasonal.
+
+```{r}
+fb_stock %>%
+  model(NAIVE(Close)) %>%
+  forecast(h = 100) %>%
+  autoplot(fb_stock)
+```
+
+The naive method is most appropriate, and will also be best if the efficient market hypothesis holds true.
+
+# fpp3 5.10, Ex 3
+
+> Apply a seasonal naÃ¯ve method to the quarterly Australian beer production data from 1992. Check if the residuals look like white noise, and plot the forecasts. The following code will help.
+
+```{r}
+# Extract data of interest
+recent_production <- aus_production %>%
+  filter(year(Quarter) >= 1992)
+# Define and estimate a model
+fit <- recent_production %>% model(SNAIVE(Beer))
+# Look at the residuals
+fit %>% gg_tsresiduals()
+```
+
+* The residuals are not centred around 0 (typically being slightly below it), this is due to the model failing to capture the negative trend in the data.
+* Peaks and troughs in residuals spaced roughly 4 observations apart are apparent leading to a negative spike at lag 4 in the ACF. So they do not resemble white noise. Lags 1 and 3 are also significant, however they are very close to the threshold and are of little concern. 
+* The distribution of the residuals does not appear very normal, however it is probably close enough for the accuracy of our intervals (it being not centred on 0 is more concerning).
+
+```{r}
+# Look at some forecasts
+fit %>%
+  forecast() %>%
+  autoplot(recent_production)
+```
+
+The forecasts look reasonable, although the intervals may be a bit wide. This is likely due to the slight trend not captured by the model (which subsequently violates the assumptions imposed on the residuals).
+
+# fpp3 5.10, Ex 4
+
+> Repeat the exercise for the Australian Exports series from `global_economy` and the Bricks series from `aus_production`. Use whichever of `NAIVE()` or `SNAIVE()` is more appropriate in each case.
+
+## Australian exports
+
+The data does not contain seasonality, so the naive model is more appropriate.
+
+```{r}
+# Extract data of interest
+aus_exports <- filter(global_economy, Country == "Australia")
+# Define and estimate a model
+fit <- aus_exports %>% model(NAIVE(Exports))
+# Check residuals
+fit %>% gg_tsresiduals()
+```
+
+The ACF plot reveals that the first lag exceeds the significance threshold. This data may still be white noise, as it is the only lag that exceeds the blue dashed lines (5\% of the lines are expected to exceed it). However as it is the first lag, it is probable that there exists some real auto-correlation in the residuals that can be modelled. The distribution appears normal.
+
+The residual plot appears mostly random, however more observations appear to be above zero. This again, is due to the model not capturing the trend.
+
+```{r}
+# Look at some forecasts
+fit %>%
+  forecast() %>%
+  autoplot(aus_exports)
+```
+
+The forecasts appear reasonable as the series appears to have flattened in recent years. The intervals are also reasonable --- despite the assumptions behind them having been violated.
+
+## Australian brick production
+
+The data is seasonal, so the seasonal naive model is more appropriate.
+
+```{r}
+# Remove the missing values at the end of the series
+tidy_bricks <- aus_production %>%
+  filter(!is.na(Bricks))
+# Define and estimate a model
+fit <- tidy_bricks %>%
+  model(SNAIVE(Bricks))
+# Look at the residuals
+fit %>% gg_tsresiduals()
+```
+
+The residual plot does not appear random. Periods of low production and high production are evident, leading to autocorrelation in the residuals.
+
+The residuals from this model are not white noise. The ACF plot shows a strong sinusoidal pattern of decay, indicating that the residuals are auto-correlated. The histogram is also not normally distributed, as it has a long left tail.
+
+```{r}
+# Look at some forecasts
+fit %>%
+  forecast() %>%
+  autoplot(tidy_bricks)
+```
+
+The point forecasts appear reasonable as the series appears to have flattened in recent years. The intervals appear much larger than necessary.
+
+# fpp3 5.10, Ex 5
+
+> Produce forecasts for the 7 Victorian series in `aus_livestock` using `SNAIVE()`. Plot the resulting forecasts including the historical data. Is this a reasonable benchmark for these series?
+
+```{r, fig.height=12}
+aus_livestock %>%
+  filter(State == "Victoria") %>%
+  model(SNAIVE(Count)) %>%
+  forecast(h = "5 years") %>%
+  autoplot(aus_livestock)
+```
+
+Most point forecasts look reasonable from the seasonal naive method. Some series are more seasonal than others, and for the series with very weak seasonality it may be better to consider using a naive or drift method. The prediction intervals in some cases go below zero, so perhaps a log transformation would have been better for these series.
+
+# fpp3 5.10, Ex 6
+
+> Are the following statements true or false? Explain your answer.
+>
+>   a. Good forecast methods should have normally distributed residuals.
+
+False. Although many good forecasting methods produce normally distributed residuals this is not required to produce good forecasts. Other forecasting methods may use other distributions, it is just less common as they can be more difficult to work with.
+
+>   b. A model with small residuals will give good forecasts.
+
+False. It is possible to produce a model with small residuals by making a highly complicated (overfitted) model that fits the data extremely well. This highly complicated model will often perform very poorly when forecasting new data.
+
+>   c. The best measure of forecast accuracy is MAPE.
+
+False. There is no single best measure of accuracy - often you would want to see a collection of accuracy measures as they can reveal different things about your residuals. MAPE in particular has some substantial disadvantages - extreme values can result when $y_t$ is close to zero, and it assumes that the unit being measured has a meaningful zero.
+
+>   d. If your model doesnâ€™t forecast well, you should make it more complicated.
+
+False. There are many reasons why a model may not forecast well, and making the model more complicated can make the forecasts worse. The model specified should capture structures that are evident in the data. Although adding terms that are unrelated to the structures found in the data will improve the model's residuals, the forecasting performance of the model will not improve. Adding missing features relevant to the data (such as including a seasonal pattern that exists in the data) should improve forecast performance.
+
+>   e. Always choose the model with the best forecast accuracy as measured on the test set.
+
+False. There are many measures of forecast accuracy, and the appropriate model is the one which is best suited to the forecasting task. For instance, you may be interested in choosing a model which forecasts well for predictions exactly one year ahead. In this case, using cross-validated accuracy could be a more useful approach to evaluating accuracy.
+
+# fpp3 5.10, Ex 7
+
+> For your retail time series (from Exercise 8 in Section 2.10):
+>
+>   a. Create a training dataset consisting of observations before 2011.
+>   b. Check that your data have been split appropriately by producing the following plot.
+>   c. Calculate seasonal naÃ¯ve forecasts using `SNAIVE()` applied to your training data (`myseries_train`).
+>   d. Check the residuals. Do the residuals appear to be uncorrelated and normally distributed?
+>   e. Produce forecasts for the test data.
+>   f. Compare the accuracy of your forecasts against the actual values.
+>   g. How sensitive are the accuracy measures to the amount of training data used?
+
+```{r}
+set.seed(12345678)
+myseries <- aus_retail %>%
+  filter(`Series ID` == sample(aus_retail$`Series ID`, 1))
+myseries_train <- myseries %>%
+  filter(year(Month) < 2011)
+autoplot(myseries, Turnover) +
+  autolayer(myseries_train, Turnover, colour = "red")
+```
+
+The plot indicates that the training data has been extracted correctly.
+
+```{r}
+fit <- myseries_train %>%
+  model(SNAIVE(Turnover))
+```
+
+```{r}
+fit %>% gg_tsresiduals()
+```
+
+The residuals appear very auto-correlated as many lags exceed the significance threshold. This can also be seen in the residual plot, where there are periods of sustained high and low residuals. The distribution does not appear normally distributed, and is not centred around zero.
+
+```{r}
+fc <- fit %>%
+  forecast(new_data = anti_join(myseries, myseries_train))
+fc %>% autoplot(myseries)
+bind_rows(
+  accuracy(fit),
+  accuracy(fc, myseries)
+) %>%
+  select(-State, -Industry, -.model)
+```
+
+The accuracy on the training data is substantially better than the out-of-sample forecast accuracy. This is common, and especially evident in this example as the model has failed to capture the trend in the data. This can be seen in the mean error, which is above zero as the model predictions do not account for the upward trend.
+
+```{r}
+myseries_accuracy <- function(data, last_training_year) {
+  myseries_train <- data %>%
+    filter(year(Month) <= last_training_year)
+  fit <- myseries_train %>%
+    model(SNAIVE(Turnover))
+  fc <- fit %>%
+    forecast(new_data = anti_join(myseries, myseries_train))
+  bind_rows(
+    accuracy(fit),
+    accuracy(fc, myseries)
+  ) %>%
+    mutate(last_training_year = last_training_year) %>%
+    select(last_training_year, .type, ME:ACF1)
+}
+as.list(2011:2017) %>%
+  purrr::map_dfr(myseries_accuracy, data = myseries) %>%
+  ggplot(aes(x = last_training_year, y = RMSE, group = .type)) +
+  geom_line(aes(col = .type))
+```
+
+The accuracy on the training data is almost unchanged when the size of the training set is increased. However, the accuracy on the test data decreases as we are averaging RMSE over the forecast horizon, and with less training data the forecasts horizons can be longer.
+
+# fpp3 5.10, Ex 8
+
+> Consider the number of pigs slaughtered in New South Wales (data set `aus_livestock`).
+>
+>   a. Produce some plots of the data in order to become familiar with it.
+
+```{r}
+nsw_pigs <- aus_livestock %>%
+  filter(State == "New South Wales", Animal == "Pigs")
+nsw_pigs %>%
+  autoplot(Count)
+```
+
+Data generally follows a downward trend, however there are some periods where the amount of pigs slaughtered changes rapidly.
+
+```{r}
+nsw_pigs %>% gg_season(Count, labels = "right")
+nsw_pigs %>% gg_subseries(Count)
+```
+
+Some seasonality is apparent, with notable increases in December and decreases during January, February and April.
+
+>   b. Create a training set of 486 observations, withholding a test set of 72 observations (6 years).
+
+```{r}
+nsw_pigs_train <- nsw_pigs %>% slice(1:486)
+```
+
+>   c. Try using various benchmark methods to forecast the training set and compare the results on the test set. Which method did best?
+
+```{r}
+fit <- nsw_pigs_train %>%
+  model(
+    mean = MEAN(Count),
+    naive = NAIVE(Count),
+    snaive = SNAIVE(Count),
+    drift = RW(Count ~ drift())
+  )
+fit %>%
+  forecast(h = "6 years") %>%
+  accuracy(nsw_pigs)
+```
+
+The drift method performed best for all measures of accuracy (although it had a larger first order auto-correlation)
+
+>   d. Check the residuals of your preferred method. Do they resemble white noise?
+
+```{r}
+fit %>%
+  select(drift) %>%
+  gg_tsresiduals()
+```
+
+The residuals do not appear to be white noise as the ACF plot contains many significant lags. It is also clear that the seasonal component is not captured by the drift method, as there exists a strong positive auto-correlation at lag 12 (1 year). The histogram appears to have a slightly long left tail.
+
+# fpp3 5.10, Ex 9
+
+>    a. Create a training set for household wealth (`hh_budget`) by withholding the last four years as a test set.
+
+```{r ex91}
+train <- hh_budget %>%
+  filter(Year <= max(Year) - 4)
+```
+
+>    b. Fit all the appropriate benchmark methods to the training set and forecast the periods covered by the test set.
+
+```{r ex92}
+fit <- train %>%
+  model(
+    naive = NAIVE(Wealth),
+    drift = RW(Wealth ~ drift()),
+    mean = MEAN(Wealth)
+  )
+fc <- fit %>% forecast(h = 4)
+```
+
+>    c. Compute the accuracy of your forecasts. Which method does best?
+
+```{r ex93}
+fc %>%
+  accuracy(hh_budget) %>%
+  arrange(Country, MASE)
+fc %>%
+  accuracy(hh_budget) %>%
+  group_by(.model) %>%
+  summarise(MASE = mean(MASE)) %>%
+  ungroup() %>%
+  arrange(MASE)
+```
+
+The drift method is better for every country, and on average.
+
+>    d. Do the residuals from the best method resemble white noise?
+
+```{r ex94}
+fit %>%
+  filter(Country == "Australia") %>%
+  select(drift) %>%
+  gg_tsresiduals()
+fit %>%
+  filter(Country == "Canada") %>%
+  select(drift) %>%
+  gg_tsresiduals()
+fit %>%
+  filter(Country == "Japan") %>%
+  select(drift) %>%
+  gg_tsresiduals()
+fit %>%
+  filter(Country == "USA") %>%
+  select(drift) %>%
+  gg_tsresiduals()
+```
+
+In all cases, the residuals look like white noise.
+
+# fpp3 5.10, Ex 10
+
+>    a. Create a training set for Australian takeaway food turnover (`aus_retail`) by withholding the last four years as a test set.
+
+```{r ex101}
+takeaway <- aus_retail %>%
+  filter(Industry == "Takeaway food services") %>%
+  summarise(Turnover = sum(Turnover))
+train <- takeaway %>%
+  filter(Month <= max(Month) - 4 * 12)
+```
+
+>    b. Fit all the appropriate benchmark methods to the training set and forecast the periods covered by the test set.
+
+```{r ex102}
+fit <- train %>%
+  model(
+    naive = NAIVE(Turnover),
+    drift = RW(Turnover ~ drift()),
+    mean = MEAN(Turnover),
+    snaive = SNAIVE(Turnover)
+  )
+fc <- fit %>% forecast(h = "4 years")
+```
+
+>    c. Compute the accuracy of your forecasts. Which method does best?
+
+```{r ex103}
+fc %>%
+  accuracy(takeaway) %>%
+  arrange(MASE)
+```
+
+The naive method is best here.
+
+>    d. Do the residuals from the best method resemble white noise?
+
+```{r ex104}
+fit %>%
+  select(naive) %>%
+  gg_tsresiduals()
+```
+
+This is far from white noise. There is strong seasonality and increasing variance that has not been accounted for by the naive model.
+
+# fpp3 5.10, Ex 11
+
+> We will use the bricks data from `aus_production` (Australian quarterly clay brick production 1956--2005) for this exercise.
+>
+>   a. Use an STL decomposition to calculate the trend-cycle and seasonal indices. (Experiment with having fixed or changing seasonality.)
+
+```{r}
+tidy_bricks <- aus_production %>%
+  filter(!is.na(Bricks))
+tidy_bricks %>%
+  model(STL(Bricks)) %>%
+  components() %>%
+  autoplot()
+```
+
+Data is multiplicative, and so a transformation should be used.
+
+```{r}
+dcmp <- tidy_bricks %>%
+  model(STL(log(Bricks))) %>%
+  components()
+dcmp %>%
+  autoplot()
+```
+
+Seasonality varies slightly.
+
+```{r}
+dcmp <- tidy_bricks %>%
+  model(stl = STL(log(Bricks) ~ season(window = "periodic"))) %>%
+  components()
+dcmp %>% autoplot()
+```
+
+The seasonality looks fairly stable, so I've used a periodic season (window). The decomposition still performs well when the seasonal component is fixed. The remainder term does not appear to contain a substantial amount of seasonality.
+
+>   b. Compute and plot the seasonally adjusted data.
+
+```{r}
+dcmp %>%
+  as_tsibble() %>%
+  autoplot(season_adjust)
+```
+
+>   c. Use a naÃ¯ve method to produce forecasts of the seasonally adjusted data.
+
+```{r}
+fit <- dcmp %>%
+  select(-.model) %>%
+  model(naive = NAIVE(season_adjust)) %>%
+  forecast(h = "5 years")
+dcmp %>%
+  as_tsibble() %>%
+  autoplot(season_adjust) + autolayer(fit)
+```
+
+>   d. Use `decomposition_model()` to reseasonalise the results, giving forecasts for the original data.
+
+```{r}
+fit <- tidy_bricks %>%
+  model(stl_mdl = decomposition_model(STL(log(Bricks)), NAIVE(season_adjust)))
+fit %>%
+  forecast(h = "5 years") %>%
+  autoplot(tidy_bricks)
+```
+
+>   e. Do the residuals look uncorrelated?
+
+```{r}
+fit %>% gg_tsresiduals()
+```
+
+The residuals do not appear uncorrelated as there are several lags of the ACF which exceed the significance threshold.
+
+>   f. Repeat with a robust STL decomposition. Does it make much difference?
+
+```{r}
+fit_robust <- tidy_bricks %>%
+  model(stl_mdl = decomposition_model(STL(log(Bricks)), NAIVE(season_adjust)))
+
+fit_robust %>% gg_tsresiduals()
+```
+
+The residuals appear slightly less auto-correlated, however there is still significant auto-correlation at lag 8.
+
+>   g. Compare forecasts from `decomposition_model()` with those from `SNAIVE()`, using a test set comprising the last 2 years of data. Which is better?
+
+```{r}
+tidy_bricks_train <- tidy_bricks %>%
+  slice(1:(n() - 8))
+fit <- tidy_bricks_train %>%
+  model(
+    stl_mdl = decomposition_model(STL(log(Bricks)), NAIVE(season_adjust)),
+    snaive = SNAIVE(Bricks)
+  )
+
+fc <- fit %>%
+  forecast(h = "2 years")
+fc %>%
+  autoplot(tidy_bricks, level = NULL)
+```
+
+The decomposition forecasts appear to more closely follow the actual future data.
+
+```{r}
+fc %>%
+  accuracy(tidy_bricks)
+```
+
+The STL decomposition forecasts are more accurate than the seasonal naive forecasts across all accuracy measures.
+
+# fpp3 5.10, Ex 12
+
+> `tourism` contains quarterly visitor nights (in thousands) from 1998 to 2017 for 76 regions of Australia.
+>
+>   a. Extract data from the Gold Coast region using `filter()` and aggregate total overnight trips (sum over `Purpose`) using `summarise()`. Call this new dataset `gc_tourism`.
+
+```{r}
+gc_tourism <- tourism %>%
+  filter(Region == "Gold Coast") %>%
+  summarise(Trips = sum(Trips))
+gc_tourism
+```
+
+>   b. Using `slice()` or `filter()`, create three training sets for this data excluding the last 1, 2 and 3 years. For example, `gc_train_1 <- gc_tourism %>% slice(1:(n()-4))`.
+
+```{r}
+gc_train_1 <- gc_tourism %>% slice(1:(n() - 4))
+gc_train_2 <- gc_tourism %>% slice(1:(n() - 8))
+gc_train_3 <- gc_tourism %>% slice(1:(n() - 12))
+```
+
+>   c. Compute one year of forecasts for each training set using the seasonal naÃ¯ve (`SNAIVE()`) method. Call these `gc_fc_1`, `gc_fc_2` and `gc_fc_3`, respectively.
+
+```{r}
+gc_fc <- bind_cols(
+  gc_train_1 %>% model(gc_fc_1 = SNAIVE(Trips)),
+  gc_train_2 %>% model(gc_fc_2 = SNAIVE(Trips)),
+  gc_train_3 %>% model(gc_fc_3 = SNAIVE(Trips))
+) %>% forecast(h = "1 year")
+```
+
+```{r}
+gc_fc %>% autoplot(gc_tourism)
+```
+
+>   d. Use `accuracy()` to compare the test set forecast accuracy using MAPE. Comment on these.
+
+```{r}
+gc_fc %>% accuracy(gc_tourism)
+```
+
+The second set of forecasts are most accurate (as can be seen in the previous plot), however this is likely due to chance.
