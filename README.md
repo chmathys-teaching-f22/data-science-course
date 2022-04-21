@@ -40,12 +40,13 @@ In the later parts of the course, we will also look at scientific papers in the 
 | 4           | 9            | ANNs: backpropagation and training of networks (Nielsen 2,3)              |
 | 5           | 10           | ANNs: deep learning (Nielsen 5,6)                                         |
 | 6           | 12           | Time series: intro, graphics, decomposition (FPP3 1,2,3)                  |
-| 7           | 13           | Time series: forecaster’s toolbox, regression (FPP3, 4,5,7)               |
-| 8           | 14           | Time series: ETS, ARIMA, Bayesian structural models (FPP3, 7,8,9)         |
-| 9           | 17           | Time series: dynamic regression models, advanced methods (FPP3, 10,11,12) |
-| 10          | 18           | Time series: Bayesian structural models                                   |
-| 11          | 19           | Belief updating: cognitive processing of sequential inputs                |
-| 12          | 20           | Belief updating: hierarchical Gaussian filters                            |
+| 7           | 13           | Time series: features (FPP3 4)                                            |
+| 8           | 14           | Time series: forecaster’s toolbox (FPP3 5)                                |
+| 9           | 16           | Time series: regression models (FPP3 7)                                   |
+| 10          | 17           | Time series: ETS, ARIMA (FPP3 8,9)                                        |
+| 11          | 18           | Time series: dynamic regression models, advanced methods (FPP3 10,11,12)  |
+| 12          | 19           | Time series: Bayesian structural models                                   |
+| 13          | 20           | Belief updating: cognitive processing of sequential inputs and HGFs       |
 
 
 ### Exam
