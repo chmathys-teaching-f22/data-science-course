@@ -67,7 +67,7 @@ The format is very simple: **you choose a dataset, analyze it using current data
 
 - By the date specified in the [exam plan](https://studerende.au.dk/en/studies/subject-portals/arts/exams/exam-timetables-faculty-of-arts/147102-cognitive-science), you submit your exam project.
 
-- You submit a GitHub repository containing your text and product via GitHub Classroom. Additionally, you submit the same items via the Digital Exam system.
+- Your submission consists of a GitHub repository containing your text and product. Additionally, you submit the the text in PDF format via the Digital Exam system. The PDF should contain a link to the GitHub repository.
 
 
 #### Formal requirements
